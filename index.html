@@ -1,1369 +1,303 @@
-<!DOCTYPE html>
-<html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-    <meta name="theme-color" content="#0f172a" />
-    <meta name="apple-mobile-web-app-capable" content="yes" />
-    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-    <meta name="apple-mobile-web-app-title" content="VibeTune" />
-    <title>VibeTune - Visual Soundscapes</title>
-    
-    <!-- PWA Manifest -->
-    <link rel="manifest" href='data:application/manifest+json;base64,ewogICJuYW1lIjogIlZpYmVUdW5lIiwKICAic2hvcnRfbmFtZSI6ICJWaWJlVHVuZSIsCiAgInN0YXJ0X3VybCI6ICIvIiwKICAiZGlzcGxheSI6ICJzdGFuZGFsb25lIiwKICAiYmFja2dyb3VuZF9jb2xvciI6ICIjMGYxNzJhIiwKICAidGhlbWVfY29xvciI6ICIjMGYxNzJhIiwKICAiaWNvbnMiOiBbXQp9' />
+import React, { useState } from 'react';
+import ImageUploader from './components/ImageUploader';
+import SongCard from './components/SongCard';
+import HistoryList from './components/HistoryList';
+import { analyzeImageAndSuggestSong } from './services/geminiService';
+import { SongRecommendation, HistoryItem } from './types';
+import { Sparkles, Zap, TrendingUp, Sparkles as SparklesIcon, AlignLeft, Music, Info, X } from 'lucide-react';
 
-    <!-- Tailwind CSS -->
-    <script src="https://cdn.tailwindcss.com"></script>
-    
-    <!-- Fonts -->
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&family=Playfair+Display:wght@700&display=swap" rel="stylesheet">
-    
-    <!-- Babel for browser-based compilation -->
-    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+const VIBE_OPTIONS = [
+  "Surprise Me",
+  "Arabic",
+  "Iraqi",
+  "English Pop",
+  "Khaleeji",
+  "Hip Hop/Rap",
+  "Indie/Alt",
+  "K-Pop",
+  "Techno/House",
+  "Classical"
+];
 
-    <!-- Import Map for Modules -->
-    <script type="importmap">
-    {
-      "imports": {
-        "react": "https://esm.sh/react@18.3.1",
-        "react-dom/client": "https://esm.sh/react-dom@18.3.1/client",
-        "@google/genai": "https://esm.run/@google/genai",
-        "lucide-react": "https://esm.sh/lucide-react@0.454.0?deps=react@18.3.1"
-      }
+const App: React.FC = () => {
+  const [currentImage, setCurrentImage] = useState<string | null>(null);
+  const [recommendations, setRecommendations] = useState<SongRecommendation[]>([]);
+  const [activeIndex, setActiveIndex] = useState(0);
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [history, setHistory] = useState<HistoryItem[]>([]);
+  const [musicPreference, setMusicPreference] = useState<string>("Surprise Me");
+  const [showInfo, setShowInfo] = useState(false);
+
+  const handleImageSelected = async (base64: string, mimeType: string) => {
+    setCurrentImage(base64);
+    setRecommendations([]);
+    setError(null);
+    setIsLoading(true);
+    setActiveIndex(0);
+
+    try {
+      const results = await analyzeImageAndSuggestSong(base64, mimeType, musicPreference);
+      
+      const newHistoryItem: HistoryItem = {
+        id: Date.now().toString(),
+        imageUrl: base64,
+        recommendations: results,
+        timestamp: Date.now()
+      };
+
+      setRecommendations(results);
+      setHistory(prev => [newHistoryItem, ...prev].slice(0, 9)); // Keep last 9
+    } catch (err) {
+      console.error(err);
+      setError("We couldn't catch the vibe. The AI might be having a creative block or the image format isn't supported. Please try again.");
+    } finally {
+      setIsLoading(false);
     }
-    </script>
+  };
 
-    <style>
-      body {
-        font-family: 'Inter', sans-serif;
-        background-color: #0f172a;
-        color: #e2e8f0;
-        overscroll-behavior-y: none;
-      }
-      .font-display {
-        font-family: 'Playfair Display', serif;
-      }
-      .glass-panel {
-        background: rgba(255, 255, 255, 0.05);
-        backdrop-filter: blur(12px);
-        -webkit-backdrop-filter: blur(12px);
-        border: 1px solid rgba(255, 255, 255, 0.1);
-      }
-      .vinyl-spin {
-        animation: spin 10s linear infinite;
-      }
-      @keyframes spin {
-        from { transform: rotate(0deg); }
-        to { transform: rotate(360deg); }
-      }
-      @keyframes fadeIn {
-        from { opacity: 0; transform: translateY(10px); }
-        to { opacity: 1; transform: translateY(0); }
-      }
-      /* Custom scrollbar for webkit */
-      ::-webkit-scrollbar {
-        width: 8px;
-      }
-      ::-webkit-scrollbar-track {
-        background: #0f172a; 
-      }
-      ::-webkit-scrollbar-thumb {
-        background: #334155; 
-        border-radius: 4px;
-      }
-      ::-webkit-scrollbar-thumb:hover {
-        background: #475569; 
-      }
-    </style>
+  const handleHistorySelect = (item: HistoryItem) => {
+    setCurrentImage(item.imageUrl);
+    setRecommendations(item.recommendations);
+    setActiveIndex(0);
+    setError(null);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
 
-    <!-- CONFIGURATION SCRIPT -->
-    <script>
-      // ⚠️ OPTIONAL: HARDCODE YOUR KEY HERE IF YOU WANT
-      // If you leave this as "YOUR_API_KEY_HERE", the app will ask you for it in the browser UI.
-      window.process = {
-        env: {
-          API_KEY: "AIzaSyCgD5pJLXQpuWg8K5jjU3JadN7Bva_4SM0" 
-        }
-      };
+  const handleReset = () => {
+    setCurrentImage(null);
+    setRecommendations([]);
+    setError(null);
+    setActiveIndex(0);
+  };
+
+  const getIconForCategory = (category: string) => {
+    if (category.toLowerCase().includes('trending') || category.toLowerCase().includes('main')) return <TrendingUp className="w-4 h-4" />;
+    if (category.toLowerCase().includes('aesthetic')) return <SparklesIcon className="w-4 h-4" />;
+    return <AlignLeft className="w-4 h-4" />;
+  };
+
+  return (
+    <div className="min-h-screen bg-[#0f172a] text-slate-200 selection:bg-indigo-500/30 selection:text-indigo-200 pb-20 overflow-x-hidden relative">
       
-      if (typeof process === 'undefined') {
-          window.process = { env: { API_KEY: "AIzaSyCgD5pJLXQpuWg8K5jjU3JadN7Bva_4SM0" } };
-      }
-    </script>
-  </head>
-  <body>
-    <div id="root"></div>
+      {/* Background decoration */}
+      <div className="fixed top-0 left-0 w-full h-full overflow-hidden pointer-events-none z-0">
+        <div className="absolute top-0 left-1/4 w-[500px] h-[500px] bg-indigo-600/20 rounded-full blur-[120px] mix-blend-screen animate-[pulse_8s_ease-in-out_infinite]"></div>
+        <div className="absolute bottom-0 right-1/4 w-[500px] h-[500px] bg-purple-600/10 rounded-full blur-[120px] mix-blend-screen animate-[pulse_10s_ease-in-out_infinite_reverse]"></div>
+      </div>
 
-    <script type="text/babel" data-type="module">
-      import React, { useState, useEffect, useRef } from 'react';
-      import { createRoot } from 'react-dom/client';
-      import { GoogleGenAI, Type } from "@google/genai";
-      import { 
-        Upload, Image as ImageIcon, Loader2, Disc, Music2, Play, Copy, 
-        Check, Smartphone, X, AudioWaveform, Eye, EyeOff, Volume2, 
-        VolumeX, Youtube, Pause, Share2, Clock, ChevronRight, Layers,
-        Sparkles, Zap, TrendingUp, AlignLeft, Music, Sparkles as SparklesIcon,
-        Settings, Key, AlertCircle, Download, Timer, Film
-      } from "lucide-react";
-
-      // --- SERVICE: Gemini ---
-
-      const songSchema = {
-        type: Type.ARRAY,
-        items: {
-          type: Type.OBJECT,
-          properties: {
-            songTitle: { type: Type.STRING, description: "The title of the song" },
-            artist: { type: Type.STRING, description: "The artist or band name" },
-            albumName: { type: Type.STRING, description: "The album the song is from" },
-            genre: { type: Type.STRING, description: "The primary genre of the song" },
-            moodDescription: { type: Type.STRING, description: "2-3 words describing the mood (e.g., 'Golden Hour', 'City Lights')" },
-            hexColor: { type: Type.STRING, description: "A hex color code extracted from the image that matches the song vibe" },
-            reason: { type: Type.STRING, description: "A short, punchy explanation of why this fits the Instagram story." },
-            category: { type: Type.STRING, description: "The category of this match: 'Trending', 'Aesthetic', or 'Lyrical'" }
-          },
-          required: ["songTitle", "artist", "albumName", "genre", "moodDescription", "hexColor", "reason", "category"]
-        }
-      };
-
-      const analyzeImageAndSuggestSong = async (base64Image, mimeType, preference, apiKey) => {
-        try {
-          if (!apiKey || apiKey === "YOUR_API_KEY_HERE") {
-             throw new Error("API_KEY_MISSING");
-          }
-
-          const genAI = new GoogleGenAI({ apiKey: apiKey });
-          const cleanBase64 = base64Image.replace(/^data:image\/(png|jpeg|jpg|webp);base64,/, "");
-
-          let preferenceContext = "";
-          if (preference && preference !== "Surprise Me") {
-            preferenceContext = `CRITICAL: The user specifically wants "${preference}" music. Only recommend songs that fit this genre/region. Do not suggest songs from other styles unless they perfectly blend with "${preference}".`;
-          }
-
-          const response = await genAI.models.generateContent({
-            model: "gemini-2.5-flash",
-            contents: {
-              parts: [
-                {
-                  inlineData: {
-                    data: cleanBase64,
-                    mimeType: mimeType
-                  }
-                },
-                {
-                  text: `Analyze this image for an Instagram Story context. I need you to act as a world-class DJ and social media curator.
-                  
-                  ${preferenceContext}
-                  
-                  Provide exactly 3 distinct song options that fit this image perfectly:
-                  1. 'Main Character Energy': A popular or trending song that fits the vibe broadly.
-                  2. 'The Aesthetic': A deeper cut, indie, lo-fi, or alternative track that matches the specific color palette and mood perfectly.
-                  3. 'Lyrical Match': A song where the lyrics or title conceptually match the subject matter (e.g., if it's rain, a song about rain).
-
-                  Be extremely accurate with the genre and ensure the songs actually exist on Spotify.`
-                }
-              ]
-            },
-            config: {
-              responseMimeType: "application/json",
-              responseSchema: songSchema,
-              systemInstruction: "You are an expert music curator for social media. You understand visual aesthetics, lighting, and composition and can map them to specific sounds."
-            }
-          });
-
-          if (!response.text) {
-            throw new Error("No response text received from Gemini");
-          }
-
-          return JSON.parse(response.text);
-
-        } catch (error) {
-          console.error("Error analyzing image:", error);
-          throw error;
-        }
-      };
-
-      // --- COMPONENT: ApiKeyModal ---
-      
-      const ApiKeyModal = ({ isOpen, onClose, onSave, currentKey }) => {
-        const [key, setKey] = useState(currentKey || '');
-
-        useEffect(() => {
-          if (isOpen && currentKey) setKey(currentKey);
-        }, [isOpen, currentKey]);
-
-        if (!isOpen) return null;
-
-        return (
-          <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-[fadeIn_0.2s_ease-out]">
-            <div className="bg-slate-900 border border-slate-700 rounded-2xl p-6 w-full max-w-md shadow-2xl relative">
-              <button 
-                onClick={onClose}
-                className="absolute top-4 right-4 text-slate-500 hover:text-white transition-colors"
-              >
-                <X className="w-5 h-5" />
-              </button>
-
-              <div className="flex items-center gap-3 mb-4 text-indigo-400">
-                <Key className="w-6 h-6" />
-                <h3 className="text-xl font-bold text-white">Gemini API Key</h3>
-              </div>
-              
-              <p className="text-slate-400 text-sm mb-4 leading-relaxed">
-                To use VibeTune, you need a Google Gemini API Key. The key is stored locally in your browser and never sent to our servers.
-              </p>
-
-              <div className="bg-slate-800/50 rounded-lg p-3 mb-4 border border-slate-700">
-                 <p className="text-xs text-slate-500 mb-1">Don't have a key?</p>
-                 <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noreferrer" className="text-indigo-400 text-sm font-medium hover:underline flex items-center gap-1">
-                   Get a free key from Google AI Studio <ChevronRight className="w-3 h-3" />
-                 </a>
-              </div>
-
-              <div className="space-y-4">
-                <div>
-                  <label className="block text-xs font-medium text-slate-300 mb-1.5 uppercase tracking-wide">Enter API Key</label>
-                  <input 
-                    type="password" 
-                    value={key}
-                    onChange={(e) => setKey(e.target.value)}
-                    placeholder="AIzaSy..."
-                    className="w-full bg-slate-950 border border-slate-700 rounded-lg px-4 py-3 text-white placeholder-slate-600 focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-all font-mono text-sm"
-                  />
-                </div>
-                
-                <button 
-                  onClick={() => onSave(key)}
-                  disabled={key.length < 10}
-                  className="w-full bg-indigo-600 hover:bg-indigo-500 disabled:bg-slate-800 disabled:text-slate-500 text-white font-bold py-3 rounded-lg transition-all shadow-lg active:scale-95 flex justify-center items-center gap-2"
-                >
-                  Save Key & Continue
-                </button>
-              </div>
-            </div>
+      <div className="relative z-10 max-w-6xl mx-auto px-4 md:px-6">
+        
+        {/* Header */}
+        <header className="py-8 md:py-12 flex flex-col items-center justify-center text-center">
+          <div className="inline-flex items-center gap-2 mb-4 px-3 py-1 rounded-full bg-slate-800/50 border border-slate-700 backdrop-blur-sm">
+             <Sparkles className="w-4 h-4 text-amber-300" />
+             <span className="text-xs font-medium text-slate-300">Powered by DeeVoo 2.5</span>
           </div>
-        );
-      };
-
-      // --- COMPONENT: ImageUploader ---
-
-      const ImageUploader = ({ onImageSelected, isLoading }) => {
-        const [isDragging, setIsDragging] = useState(false);
-        const fileInputRef = useRef(null);
-
-        const handleDragOver = (e) => {
-          e.preventDefault();
-          setIsDragging(true);
-        };
-
-        const handleDragLeave = (e) => {
-          e.preventDefault();
-          setIsDragging(false);
-        };
-
-        const processFile = (file) => {
-          if (!file.type.startsWith('image/')) {
-            alert('Please upload an image file');
-            return;
-          }
-
-          const reader = new FileReader();
-          reader.onload = (e) => {
-            const result = e.target?.result;
-            onImageSelected(result, file.type);
-          };
-          reader.readAsDataURL(file);
-        };
-
-        const handleDrop = (e) => {
-          e.preventDefault();
-          setIsDragging(false);
-          if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
-            processFile(e.dataTransfer.files[0]);
-          }
-        };
-
-        const handleFileInput = (e) => {
-          if (e.target.files && e.target.files.length > 0) {
-            processFile(e.target.files[0]);
-          }
-        };
-
-        return (
-          <div
-            className={`relative group w-full max-w-xl mx-auto rounded-2xl border-2 border-dashed transition-all duration-300 ease-in-out cursor-pointer overflow-hidden
-              ${isDragging 
-                ? 'border-indigo-500 bg-indigo-500/10 scale-[1.02]' 
-                : 'border-slate-700 hover:border-indigo-400 hover:bg-slate-800/50 bg-slate-800/30'
-              }
-              ${isLoading ? 'opacity-50 pointer-events-none' : 'opacity-100'}
-            `}
-            onDragOver={handleDragOver}
-            onDragLeave={handleDragLeave}
-            onDrop={handleDrop}
-            onClick={() => fileInputRef.current?.click()}
+          
+          <h1 
+            className="font-display text-5xl md:text-7xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-indigo-200 via-white to-purple-200 mb-4 cursor-pointer"
+            onClick={handleReset}
           >
-            <input
-              type="file"
-              ref={fileInputRef}
-              onChange={handleFileInput}
-              accept="image/*"
-              className="hidden"
-            />
-            
-            <div className="flex flex-col items-center justify-center py-16 px-4 text-center">
-              {isLoading ? (
-                <div className="flex flex-col items-center animate-pulse">
-                  <Loader2 className="w-12 h-12 text-indigo-400 animate-spin mb-4" />
-                  <p className="text-indigo-200 font-medium">Listening to the pixels...</p>
-                </div>
-              ) : (
-                <>
-                  <div className={`w-16 h-16 rounded-full flex items-center justify-center mb-4 transition-colors ${isDragging ? 'bg-indigo-500 text-white' : 'bg-slate-700 text-slate-300 group-hover:bg-indigo-500/20 group-hover:text-indigo-400'}`}>
-                    <Upload className="w-8 h-8" />
-                  </div>
-                  <h3 className="text-xl font-semibold text-slate-200 mb-2">
-                    {isDragging ? 'Drop it like it\'s hot' : 'Upload an image'}
-                  </h3>
-                  <p className="text-slate-400 text-sm max-w-xs mx-auto">
-                    Drag and drop your vibe here, or click to browse files.
-                  </p>
-                </>
-              )}
-            </div>
-          </div>
-        );
-      };
+            VibeTune
+          </h1>
+          <p className="text-lg text-slate-400 max-w-md mx-auto leading-relaxed">
+            Upload a photo for your <span className="text-pink-400 font-medium">Vibe story</span>. We'll find 3 perfect tracks to match the aesthetic.
+          </p>
 
-      // --- COMPONENT: SongCard ---
+          <button
+            onClick={() => setShowInfo(true)}
+            className="mt-4 flex items-center gap-2 text-slate-500 hover:text-indigo-300 transition-colors text-sm"
+          >
+            <Info className="w-4 h-4" />
+            <span>How does it work?</span>
+          </button>
+        </header>
 
-      const SongCard = ({ data, imageUrl }) => {
-        const [imageLoaded, setImageLoaded] = useState(false);
-        const [copied, setCopied] = useState(false);
-        
-        // Preview State
-        const [showPreview, setShowPreview] = useState(false);
-        const [stickerVisible, setStickerVisible] = useState(true);
-        const [playbackDuration, setPlaybackDuration] = useState(15); // 15 or 30 seconds
-        const [isGeneratingStory, setIsGeneratingStory] = useState(false);
-        const [isGeneratingVideo, setIsGeneratingVideo] = useState(false);
-        const [videoProgress, setVideoProgress] = useState(0);
-        
-        // Dragging State
-        const [stickerPos, setStickerPos] = useState({ x: 50, y: 50 }); // Percentages
-        const [isDragging, setIsDragging] = useState(false);
-        
-        // Audio State
-        const [audioUrl, setAudioUrl] = useState(null);
-        const [isPlaying, setIsPlaying] = useState(false);
-        const [isLoadingAudio, setIsLoadingAudio] = useState(false);
-        const [audioError, setAudioError] = useState(false);
-        
-        const audioRef = useRef(null);
-        const containerRef = useRef(null);
-
-        const spotifySearchUrl = `https://open.spotify.com/search/${encodeURIComponent(`${data.songTitle} ${data.artist}`)}`;
-        const youtubeSearchUrl = `https://www.youtube.com/results?search_query=${encodeURIComponent(`${data.songTitle} ${data.artist}`)}`;
-
-        const copyToClipboard = () => {
-          navigator.clipboard.writeText(`${data.songTitle} - ${data.artist}`);
-          setCopied(true);
-          setTimeout(() => setCopied(false), 2000);
-        };
-
-        const handleShare = async () => {
-          const shareText = `Found the perfect vibe: "${data.songTitle}" by ${data.artist}.\nMood: ${data.moodDescription}`;
+        {/* Main Content Area */}
+        <main className="flex flex-col items-center min-h-[400px]">
           
-          if (navigator.share) {
-            try {
-              await navigator.share({
-                title: 'VibeTune Match',
-                text: shareText,
-                url: spotifySearchUrl
-              });
-            } catch (err) {
-              console.log('Share skipped', err);
-            }
-          } else {
-            navigator.clipboard.writeText(`${shareText}\n${spotifySearchUrl}`);
-            setCopied(true);
-            setTimeout(() => setCopied(false), 2000);
-          }
-        };
-
-        // Reusable function to draw story to a canvas context
-        const drawStoryToCanvas = async (ctx, width, height) => {
-            // 1. Draw Background Image
-            const img = new Image();
-            img.crossOrigin = "anonymous";
-            img.src = imageUrl;
-            await new Promise(resolve => img.onload = resolve);
-            
-            // Calculate cover aspect ratio to fill canvas
-            const imgRatio = img.width / img.height;
-            const canvasRatio = width / height;
-            let renderW, renderH, offsetX, offsetY;
-            
-            if (imgRatio > canvasRatio) {
-               renderH = height;
-               renderW = height * imgRatio;
-               offsetX = -(renderW - width) / 2;
-               offsetY = 0;
-            } else {
-               renderW = width;
-               renderH = width / imgRatio;
-               offsetX = 0;
-               offsetY = -(renderH - height) / 2;
-            }
-            
-            ctx.drawImage(img, offsetX, offsetY, renderW, renderH);
-            
-            // 2. Draw Sticker (if visible)
-            if (stickerVisible) {
-               // Sticker Config (Scaled to 1080p width)
-               const stickerW = 600;
-               const stickerH = 160;
-               const stickerX = (stickerPos.x / 100) * width - (stickerW / 2);
-               const stickerY = (stickerPos.y / 100) * height - (stickerH / 2);
-               
-               // Draw Sticker Background (Rounded Rect)
-               ctx.save();
-               ctx.fillStyle = 'rgba(255, 255, 255, 0.25)';
-               ctx.shadowColor = 'rgba(0, 0, 0, 0.2)';
-               ctx.shadowBlur = 20;
-               ctx.beginPath();
-               ctx.roundRect(stickerX, stickerY, stickerW, stickerH, 25);
-               ctx.fill();
-               ctx.restore();
-               
-               // Draw Album Art (Left side)
-               const artSize = 130;
-               const artPad = 15;
-               const artX = stickerX + artPad;
-               const artY = stickerY + artPad;
-               
-               ctx.save();
-               ctx.beginPath();
-               ctx.roundRect(artX, artY, artSize, artSize, 15);
-               ctx.clip();
-               // Draw a zoomed version of the main image as "album art"
-               ctx.drawImage(img, artX - 20, artY - 20, artSize + 40, artSize + 40);
-               ctx.restore();
-               
-               // Draw Text
-               const textX = artX + artSize + 25;
-               
-               // Song Title
-               ctx.fillStyle = 'white';
-               ctx.font = 'bold 42px Inter, sans-serif';
-               ctx.shadowColor = 'rgba(0,0,0,0.5)';
-               ctx.shadowBlur = 4;
-               ctx.fillText(data.songTitle, textX, stickerY + 65, stickerW - artSize - 50);
-               
-               // Artist
-               ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
-               ctx.font = '32px Inter, sans-serif';
-               ctx.fillText(data.artist, textX, stickerY + 115, stickerW - artSize - 50);
-            }
-        };
-
-        const handleDownloadStory = async () => {
-          setIsGeneratingStory(true);
-          try {
-            const canvas = document.createElement('canvas');
-            const WIDTH = 1080;
-            const HEIGHT = 1920;
-            canvas.width = WIDTH;
-            canvas.height = HEIGHT;
-            const ctx = canvas.getContext('2d');
-            
-            await drawStoryToCanvas(ctx, WIDTH, HEIGHT);
-            
-            canvas.toBlob((blob) => {
-               const url = URL.createObjectURL(blob);
-               const a = document.createElement('a');
-               a.href = url;
-               a.download = `vibetune-story-${Date.now()}.png`;
-               document.body.appendChild(a);
-               a.click();
-               document.body.removeChild(a);
-               URL.revokeObjectURL(url);
-               setIsGeneratingStory(false);
-            }, 'image/png');
-            
-          } catch (err) {
-            console.error("Story Gen Error:", err);
-            setIsGeneratingStory(false);
-            alert("Could not generate story image. Please try again.");
-          }
-        };
-
-        const handleDownloadVideo = async () => {
-          if (!audioUrl) return;
-          setIsGeneratingVideo(true);
-          setVideoProgress(0);
-
-          try {
-            // 1. Setup Canvas
-            const canvas = document.createElement('canvas');
-            const WIDTH = 1080;
-            const HEIGHT = 1920;
-            canvas.width = WIDTH;
-            canvas.height = HEIGHT;
-            const ctx = canvas.getContext('2d');
-            
-            // Draw initial frame (it's static)
-            await drawStoryToCanvas(ctx, WIDTH, HEIGHT);
-
-            // 2. Setup Audio
-            const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-            const dest = audioCtx.createMediaStreamDestination();
-            
-            const response = await fetch(audioUrl);
-            const arrayBuffer = await response.arrayBuffer();
-            const audioBuffer = await audioCtx.decodeAudioData(arrayBuffer);
-            
-            const source = audioCtx.createBufferSource();
-            source.buffer = audioBuffer;
-            source.connect(dest);
-            
-            // 3. Create Recorder
-            const canvasStream = canvas.captureStream(30); // 30 FPS
-            const audioStream = dest.stream;
-            const combinedStream = new MediaStream([
-               ...canvasStream.getVideoTracks(),
-               ...audioStream.getAudioTracks()
-            ]);
-
-            // Try to use mp4 (better for iOS), fallback to webm
-            let mimeType = 'video/webm;codecs=vp9';
-            if (MediaRecorder.isTypeSupported('video/mp4;codecs=h264')) {
-               mimeType = 'video/mp4;codecs=h264';
-            } else if (MediaRecorder.isTypeSupported('video/webm')) {
-               mimeType = 'video/webm';
-            }
-
-            const recorder = new MediaRecorder(combinedStream, {
-               mimeType: mimeType,
-               videoBitsPerSecond: 8000000 // 8 Mbps high quality
-            });
-
-            const chunks = [];
-            recorder.ondataavailable = (e) => chunks.push(e.data);
-            
-            recorder.onstop = () => {
-               const blob = new Blob(chunks, { type: mimeType });
-               const url = URL.createObjectURL(blob);
-               const a = document.createElement('a');
-               a.href = url;
-               a.download = `vibetune-story-${Date.now()}.${mimeType.includes('mp4') ? 'mp4' : 'webm'}`;
-               document.body.appendChild(a);
-               a.click();
-               document.body.removeChild(a);
-               URL.revokeObjectURL(url);
-               
-               setIsGeneratingVideo(false);
-               audioCtx.close();
-            };
-
-            // 4. Start Recording Loop
-            recorder.start();
-            source.start(0);
-
-            // Important: We need to keep the canvas stream "active" even if static
-            // Some browsers pause streams if no paint happens
-            let startTime = Date.now();
-            const durationMs = playbackDuration * 1000;
-            
-            const animate = () => {
-               const elapsed = Date.now() - startTime;
-               const progress = Math.min(100, (elapsed / durationMs) * 100);
-               setVideoProgress(Math.round(progress));
-
-               // Simple redraw to keep stream alive
-               ctx.fillStyle = 'rgba(0,0,0,0.01)';
-               ctx.fillRect(0, 0, 1, 1); 
-
-               if (elapsed < durationMs) {
-                  requestAnimationFrame(animate);
-               } else {
-                  recorder.stop();
-                  source.stop();
-               }
-            };
-            animate();
-
-          } catch (err) {
-            console.error("Video Gen Error:", err);
-            setIsGeneratingVideo(false);
-            alert("Could not generate video. Browser might not support this feature.");
-          }
-        };
-
-        useEffect(() => {
-          setIsPlaying(false);
-          setAudioUrl(null);
-          setAudioError(false);
-          if (audioRef.current) {
-              audioRef.current.pause();
-              audioRef.current.currentTime = 0;
-          }
-
-          const fetchAudio = async () => {
-            setIsLoadingAudio(true);
-            try {
-              let query = encodeURIComponent(`${data.songTitle} ${data.artist}`);
-              let response = await fetch(`https://itunes.apple.com/search?term=${query}&media=music&limit=1`);
-              let result = await response.json();
+          {/* Vibe Selector & Uploader */}
+          {recommendations.length === 0 && !isLoading && (
+            <div className="w-full animate-[fadeIn_0.5s_ease-out]">
               
-              if (!result.results || result.results.length === 0) {
-                  query = encodeURIComponent(data.songTitle);
-                  response = await fetch(`https://itunes.apple.com/search?term=${query}&media=music&limit=1`);
-                  result = await response.json();
-              }
-
-              if (result.results && result.results.length > 0) {
-                setAudioUrl(result.results[0].previewUrl);
-              } else {
-                setAudioError(true);
-              }
-            } catch (error) {
-              setAudioError(true);
-            } finally {
-              setIsLoadingAudio(false);
-            }
-          };
-          
-          fetchAudio();
-        }, [data.songTitle, data.artist]);
-
-        const handleTimeUpdate = () => {
-          if (audioRef.current && isPlaying) {
-             if (audioRef.current.currentTime >= playbackDuration) {
-                audioRef.current.pause();
-                setIsPlaying(false);
-                audioRef.current.currentTime = 0;
-             }
-          }
-        };
-
-        const togglePlayback = (e) => {
-          e?.stopPropagation();
-          if (audioRef.current && audioUrl) {
-            if (isPlaying) {
-              audioRef.current.pause();
-              setIsPlaying(false);
-            } else {
-              audioRef.current.currentTime = 0;
-              audioRef.current.volume = 0.5;
-              audioRef.current.play()
-                .then(() => setIsPlaying(true))
-                .catch(err => console.error("Play failed", err));
-            }
-          }
-        };
-
-        const handlePointerDown = (e) => {
-          e.preventDefault();
-          e.stopPropagation();
-          setIsDragging(true);
-          e.target.setPointerCapture(e.pointerId);
-        };
-
-        const handlePointerMove = (e) => {
-          if (!isDragging || !containerRef.current) return;
-          e.preventDefault();
-
-          const rect = containerRef.current.getBoundingClientRect();
-          let x = ((e.clientX - rect.left) / rect.width) * 100;
-          let y = ((e.clientY - rect.top) / rect.height) * 100;
-
-          x = Math.max(0, Math.min(100, x));
-          y = Math.max(0, Math.min(100, y));
-
-          setStickerPos({ x, y });
-        };
-
-        const handlePointerUp = (e) => {
-          setIsDragging(false);
-          e.target.releasePointerCapture(e.pointerId);
-        };
-
-        return (
-          <>
-            <audio 
-              ref={audioRef} 
-              src={audioUrl || ''} 
-              onTimeUpdate={handleTimeUpdate}
-              onEnded={() => setIsPlaying(false)}
-              crossOrigin="anonymous"
-            />
-
-            <div className="w-full max-w-4xl mx-auto animate-[fadeIn_0.6s_ease-out]">
-              <div className="glass-panel rounded-3xl overflow-hidden shadow-2xl flex flex-col md:flex-row transition-all duration-500">
-                
-                {/* Visual Side */}
-                <div className="relative md:w-1/2 min-h-[300px] md:min-h-[400px] bg-black/40 overflow-hidden group">
-                  <div 
-                    className="absolute inset-0 bg-cover bg-center blur-xl opacity-50 scale-110 transition-transform duration-700" 
-                    style={{ backgroundImage: `url(${imageUrl})` }}
-                  />
-                  
-                  <div className="absolute inset-0 flex flex-col items-center justify-center p-8 z-10">
-                    <div 
-                      onClick={togglePlayback}
-                      className={`relative w-48 h-48 md:w-64 md:h-64 rounded-full bg-black shadow-2xl flex items-center justify-center border-4 border-slate-800 cursor-pointer transition-transform duration-700 ${isPlaying ? 'vinyl-spin' : 'hover:scale-105'}`}
-                    >
-                       <div className="w-24 h-24 md:w-32 md:h-32 rounded-full overflow-hidden border-2 border-slate-700 relative z-10">
-                          <img 
-                            src={imageUrl} 
-                            alt="Vibe Source" 
-                            className="w-full h-full object-cover"
-                            onLoad={() => setImageLoaded(true)}
-                          />
-                          <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-3 h-3 bg-white rounded-full z-20"></div>
-                       </div>
-                       
-                       <div className="absolute inset-0 rounded-full bg-gradient-to-tr from-white/5 to-transparent pointer-events-none z-10"></div>
-
-                       {!isPlaying && !isLoadingAudio && (
-                         <div className="absolute inset-0 z-20 flex items-center justify-center bg-black/40 rounded-full opacity-0 hover:opacity-100 transition-opacity">
-                            <Play className="w-12 h-12 text-white fill-current" />
-                         </div>
-                       )}
-                    </div>
-                    
-                    <div className="mt-6 text-center">
-                      <span 
-                        className="inline-block px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider text-black mb-2 shadow-lg"
-                        style={{ backgroundColor: data.hexColor }}
-                      >
-                        {data.moodDescription}
-                      </span>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Info Side */}
-                <div className="md:w-1/2 p-8 md:p-10 flex flex-col justify-center relative bg-gradient-to-br from-slate-900/80 to-slate-900/40">
-                   <div 
-                     className="absolute top-0 right-0 w-64 h-64 bg-current opacity-10 blur-[100px] pointer-events-none -translate-y-1/2 translate-x-1/2 transition-colors duration-500"
-                     style={{ color: data.hexColor }}
-                   />
-
-                  <div className="relative z-10">
-                    <div className="flex items-center justify-between mb-2">
-                      <h2 className="text-sm font-semibold text-slate-400 uppercase tracking-widest flex items-center gap-2">
-                        <Music2 className="w-4 h-4" />
-                        {data.category || 'Recommendation'}
-                      </h2>
-                      
-                      <button 
-                        onClick={copyToClipboard}
-                        className="text-xs flex items-center gap-1 text-slate-500 hover:text-white transition-colors"
-                        title="Copy for Instagram Story"
-                      >
-                        {copied ? <Check className="w-3 h-3 text-green-400" /> : <Copy className="w-3 h-3" />}
-                        {copied ? 'Copied' : 'Copy Text'}
-                      </button>
-                    </div>
-                    
-                    <div className="flex items-start gap-4 mb-2">
-                       <button 
-                         onClick={togglePlayback}
-                         disabled={!audioUrl && !isLoadingAudio}
-                         className={`
-                           mt-1 w-12 h-12 rounded-full flex items-center justify-center flex-shrink-0 transition-all duration-300
-                           ${isPlaying 
-                              ? 'bg-indigo-500 text-white shadow-[0_0_15px_rgba(99,102,241,0.5)]' 
-                              : 'bg-white/10 text-white hover:bg-white/20'
-                           }
-                         `}
-                       >
-                         {isLoadingAudio ? (
-                           <Loader2 className="w-5 h-5 animate-spin" />
-                         ) : isPlaying ? (
-                           <Pause className="w-5 h-5 fill-current" />
-                         ) : (
-                           <Play className="w-5 h-5 fill-current ml-0.5" />
-                         )}
-                       </button>
-
-                       <div>
-                          <h1 className="text-3xl md:text-4xl font-display font-bold text-white leading-tight">
-                            {data.songTitle}
-                          </h1>
-                          <p className="text-xl text-slate-300 font-light">
-                            by <span className="text-white font-medium">{data.artist}</span>
-                          </p>
-                       </div>
-                    </div>
-                    
-                    <div className="h-px w-full bg-slate-700/50 mb-6 mt-4"></div>
-                    
-                    <div className="mb-6">
-                      <h3 className="text-sm font-semibold text-slate-400 mb-2">Why it fits your Story</h3>
-                      <p className="text-slate-300 leading-relaxed italic text-sm md:text-base">
-                        "{data.reason}"
-                      </p>
-                    </div>
-
-                    <div className="flex flex-wrap gap-4 text-sm text-slate-400 mb-8">
-                       <div className="flex items-center gap-2 bg-slate-800/50 px-3 py-1.5 rounded-lg border border-slate-700">
-                          <Disc className="w-4 h-4" />
-                          {data.albumName}
-                       </div>
-                       <div className="flex items-center gap-2 bg-slate-800/50 px-3 py-1.5 rounded-lg border border-slate-700">
-                          <span className="w-2 h-2 rounded-full" style={{ backgroundColor: data.hexColor }}></span>
-                          {data.genre}
-                       </div>
-                    </div>
-                    
-                    <div className="flex flex-wrap gap-3">
-                      <button
-                        onClick={() => setShowPreview(true)}
-                        className="flex-1 inline-flex justify-center items-center gap-2 bg-slate-100 hover:bg-white text-slate-900 font-bold py-3 px-5 rounded-full transition-all hover:scale-105 active:scale-95 shadow-lg min-w-[140px]"
-                      >
-                        <Smartphone className="w-4 h-4" />
-                        Preview Story
-                      </button>
-
-                      <a 
-                        href={spotifySearchUrl} 
-                        target="_blank" 
-                        rel="noopener noreferrer"
-                        className="inline-flex items-center justify-center w-12 h-12 bg-[#1DB954] hover:bg-[#1ed760] text-black rounded-full transition-all hover:scale-105 active:scale-95 shadow-lg"
-                      >
-                        <Music2 className="w-5 h-5 fill-current" />
-                      </a>
-
-                      <a 
-                        href={youtubeSearchUrl} 
-                        target="_blank" 
-                        rel="noopener noreferrer"
-                        className="inline-flex items-center justify-center w-12 h-12 bg-[#FF0000] hover:bg-[#ff3333] text-white rounded-full transition-all hover:scale-105 active:scale-95 shadow-lg"
-                      >
-                        <Youtube className="w-5 h-5 fill-current" />
-                      </a>
-                      
-                      <button
-                        onClick={handleShare}
-                        className="inline-flex items-center justify-center w-12 h-12 bg-indigo-500 hover:bg-indigo-400 text-white rounded-full transition-all hover:scale-105 active:scale-95 shadow-lg"
-                      >
-                        <Share2 className="w-5 h-5" />
-                      </button>
-                    </div>
-                  </div>
-                </div>
+              {/* Vibe Selector Pills */}
+              <div className="max-w-xl mx-auto mb-6">
+                 <div className="flex items-center gap-2 mb-3 text-slate-400 text-sm font-medium px-2">
+                    <Music className="w-4 h-4" />
+                    <span>Choose your vibe</span>
+                 </div>
+                 <div className="flex flex-wrap gap-2 justify-center md:justify-start">
+                   {VIBE_OPTIONS.map((vibe) => (
+                     <button
+                       key={vibe}
+                       onClick={() => setMusicPreference(vibe)}
+                       className={`
+                         px-4 py-2 rounded-full text-sm font-medium transition-all duration-200 border
+                         ${musicPreference === vibe 
+                           ? 'bg-indigo-600 text-white border-indigo-500 shadow-lg shadow-indigo-500/25 scale-105' 
+                           : 'bg-slate-800/40 text-slate-400 border-slate-700/50 hover:bg-slate-800 hover:border-slate-600 hover:text-slate-200'
+                         }
+                       `}
+                     >
+                       {vibe}
+                     </button>
+                   ))}
+                 </div>
               </div>
+
+               <ImageUploader onImageSelected={handleImageSelected} isLoading={isLoading} />
             </div>
+          )}
 
-            {showPreview && (
-              <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 p-4 backdrop-blur-sm animate-[fadeIn_0.2s_ease-out]">
-                
-                <div 
-                  ref={containerRef}
-                  className="relative w-full max-w-sm aspect-[9/16] bg-black rounded-[2rem] overflow-hidden shadow-2xl border border-slate-800 ring-8 ring-slate-900 group select-none"
-                >
-                   <div className="absolute top-0 left-0 right-0 h-8 z-20 flex justify-between px-6 items-center bg-gradient-to-b from-black/40 to-transparent pointer-events-none">
-                      <div className="text-[10px] font-bold text-white/90">9:41</div>
-                      <div className="flex gap-1.5">
-                         <div className="w-3 h-3 rounded-full border border-white/80"></div>
-                         <div className="w-3 h-3 rounded-full bg-white/80"></div>
-                      </div>
-                   </div>
-
-                   <div className="absolute top-12 right-4 z-40 flex flex-col gap-4 pointer-events-auto">
-                     
-                     {/* Playback Control */}
-                     <button 
-                        onClick={() => setPlaybackDuration(prev => prev === 15 ? 30 : 15)}
-                        className="w-10 h-10 rounded-full bg-black/40 backdrop-blur-md flex flex-col items-center justify-center text-white hover:bg-black/60 transition-colors"
-                        title="Toggle Duration"
-                     >
-                        <span className="text-[10px] font-bold">{playbackDuration}s</span>
-                        <Timer className="w-3 h-3" />
-                     </button>
-
-                     <button 
-                        onClick={togglePlayback}
-                        disabled={!audioUrl && !isLoadingAudio}
-                        className="w-10 h-10 rounded-full bg-black/40 backdrop-blur-md flex items-center justify-center text-white hover:bg-black/60 transition-colors"
-                     >
-                        {isLoadingAudio ? (
-                          <Loader2 className="w-5 h-5 animate-spin text-white/70" />
-                        ) : isPlaying ? (
-                          <Volume2 className="w-5 h-5" />
-                        ) : (
-                          <VolumeX className="w-5 h-5 text-white/70" />
-                        )}
-                     </button>
-
-                     <button 
-                        onClick={(e) => { e.stopPropagation(); setStickerVisible(!stickerVisible); }}
-                        className="w-10 h-10 rounded-full bg-black/40 backdrop-blur-md flex items-center justify-center text-white hover:bg-black/60 transition-colors"
-                     >
-                        {stickerVisible ? <Eye className="w-5 h-5" /> : <EyeOff className="w-5 h-5 text-white/70" />}
-                     </button>
-
-                     {/* Image Download */}
-                     <button 
-                        onClick={(e) => { e.stopPropagation(); handleDownloadStory(); }}
-                        disabled={isGeneratingStory || isGeneratingVideo}
-                        className="w-10 h-10 rounded-full bg-white/10 backdrop-blur-md flex items-center justify-center text-white hover:bg-white/20 transition-colors"
-                        title="Save as Image"
-                     >
-                        {isGeneratingStory ? <Loader2 className="w-5 h-5 animate-spin" /> : <Download className="w-5 h-5" />}
-                     </button>
-
-                     {/* Video Download */}
-                     <button 
-                        onClick={(e) => { e.stopPropagation(); handleDownloadVideo(); }}
-                        disabled={isGeneratingVideo || !audioUrl}
-                        className="w-10 h-10 rounded-full bg-indigo-500/80 backdrop-blur-md flex items-center justify-center text-white hover:bg-indigo-500 transition-colors relative"
-                        title="Save as Video"
-                     >
-                        {isGeneratingVideo ? (
-                          <div className="flex items-center justify-center">
-                            <span className="text-[8px] font-bold absolute">{videoProgress}%</span>
-                            <Loader2 className="w-8 h-8 animate-spin opacity-50" />
-                          </div>
-                        ) : (
-                          <Film className="w-5 h-5" />
-                        )}
-                     </button>
-
-                   </div>
-
-                   <img src={imageUrl} alt="Preview" className="w-full h-full object-cover pointer-events-none" />
-
-                   {!isPlaying && !isLoadingAudio && !isGeneratingVideo && (
-                      <div 
-                        className="absolute inset-0 z-10 flex items-center justify-center pointer-events-none"
-                      >
-                        {audioUrl ? (
-                          <button 
-                            onClick={(e) => { togglePlayback(e); }}
-                            className="bg-black/30 backdrop-blur-sm p-4 rounded-full text-white/80 hover:scale-110 transition-transform pointer-events-auto"
-                          >
-                            <Play className="w-8 h-8 fill-current" />
-                          </button>
-                        ) : audioError ? (
-                           <div className="bg-black/60 backdrop-blur-md px-4 py-2 rounded-full text-white/70 text-xs">
-                              No Preview Available
-                           </div>
-                        ) : null}
-                      </div>
-                   )}
-                   
-                   {isGeneratingVideo && (
-                     <div className="absolute inset-0 z-50 bg-black/80 flex flex-col items-center justify-center p-6 text-center backdrop-blur-sm">
-                       <Loader2 className="w-10 h-10 text-indigo-500 animate-spin mb-4" />
-                       <h3 className="text-white font-bold text-lg mb-2">Rendering Video...</h3>
-                       <p className="text-slate-400 text-sm">Please wait while we record the audio and visual. This takes about {playbackDuration} seconds.</p>
-                       <div className="w-full max-w-[200px] h-2 bg-slate-800 rounded-full mt-4 overflow-hidden">
-                          <div className="h-full bg-indigo-500 transition-all duration-300" style={{ width: `${videoProgress}%` }}></div>
-                       </div>
-                     </div>
-                   )}
-
-                   {stickerVisible && (
-                     <div 
-                       className={`absolute cursor-move touch-none select-none
-                       bg-white/20 backdrop-blur-xl rounded-xl p-3 pr-5 flex items-center gap-3 w-[80%] shadow-lg border border-white/20 
-                       hover:ring-2 hover:ring-white/30 active:scale-95`}
-                       style={{ 
-                         left: `${stickerPos.x}%`, 
-                         top: `${stickerPos.y}%`,
-                         transform: 'translate(-50%, -50%)',
-                         zIndex: 50,
-                         transition: isDragging ? 'none' : 'transform 0.1s ease-out'
-                       }}
-                       onPointerDown={handlePointerDown}
-                       onPointerMove={handlePointerMove}
-                       onPointerUp={handlePointerUp}
-                       onPointerLeave={handlePointerUp}
-                     >
-                        <div className="w-12 h-12 bg-black/20 rounded-lg flex-shrink-0 overflow-hidden relative pointer-events-none">
-                           <img src={imageUrl} className="w-full h-full object-cover opacity-90 scale-150" alt="Album Art" />
-                           <div className="absolute inset-0 flex items-center justify-center bg-black/10">
-                              {isPlaying ? (
-                                <div className="flex gap-0.5 items-center h-3">
-                                  <div className="w-1 bg-white animate-[pulse_0.4s_ease-in-out_infinite] h-full"></div>
-                                  <div className="w-1 bg-white animate-[pulse_0.6s_ease-in-out_infinite] h-[60%]"></div>
-                                  <div className="w-1 bg-white animate-[pulse_0.5s_ease-in-out_infinite] h-[80%]"></div>
-                                </div>
-                              ) : (
-                                <AudioWaveform className="w-6 h-6 text-white drop-shadow-md" />
-                              )}
-                           </div>
-                        </div>
-                        <div className="flex-1 min-w-0 flex flex-col justify-center pointer-events-none">
-                           <div className="text-white font-bold text-sm truncate drop-shadow-md leading-tight">{data.songTitle}</div>
-                           <div className="text-white/90 text-xs truncate drop-shadow-md">{data.artist}</div>
-                        </div>
-                     </div>
-                   )}
-
-                   <button 
-                     onClick={() => setShowPreview(false)} 
-                     className="absolute top-4 left-4 z-50 bg-black/40 hover:bg-black/60 text-white p-2 rounded-full transition-colors backdrop-blur-md"
-                   >
-                     <X className="w-6 h-6" />
-                   </button>
-
-                   <div className="absolute bottom-8 left-0 right-0 px-6 flex justify-between items-end opacity-60 pointer-events-none z-30">
-                      <div className="h-10 w-32 bg-white/20 rounded-full"></div>
-                      <div className="h-10 w-10 bg-white/20 rounded-full"></div>
-                   </div>
+          {/* Loading State */}
+          {isLoading && (
+             <div className="w-full max-w-xl mx-auto flex flex-col items-center justify-center min-h-[300px]">
+                <div className="relative">
+                   <div className="absolute inset-0 bg-indigo-500/20 blur-xl rounded-full animate-pulse"></div>
+                   <img 
+                      src={currentImage || ''} 
+                      alt="Analyzing" 
+                      className="w-32 h-32 rounded-full object-cover relative z-10 border-4 border-indigo-500/30 animate-[spin_3s_linear_infinite]"
+                   />
                 </div>
+                <h3 className="mt-8 text-2xl font-display font-bold text-white">Curating Vibes...</h3>
+                <p className="mt-2 text-slate-400">Selecting {musicPreference !== "Surprise Me" ? musicPreference : "perfect"} tracks for your story</p>
+             </div>
+          )}
+
+          {/* Error State */}
+          {error && (
+            <div className="w-full max-w-md bg-red-500/10 border border-red-500/20 rounded-xl p-6 text-center mt-8">
+               <div className="w-12 h-12 bg-red-500/20 rounded-full flex items-center justify-center mx-auto mb-4 text-red-400">
+                 <Zap className="w-6 h-6" />
+               </div>
+               <p className="text-red-200">{error}</p>
+               <button 
+                 onClick={handleReset}
+                 className="mt-4 px-6 py-2 bg-red-600/20 hover:bg-red-600/30 text-red-200 rounded-lg transition-colors text-sm font-medium"
+               >
+                 Try Again
+               </button>
+            </div>
+          )}
+
+          {/* Result */}
+          {recommendations.length > 0 && currentImage && !isLoading && (
+            <div className="w-full flex flex-col items-center">
+              
+              {/* Option Selectors */}
+              <div className="w-full max-w-4xl mx-auto mb-6 flex flex-wrap justify-center gap-3">
+                {recommendations.map((rec, index) => (
+                  <button
+                    key={index}
+                    onClick={() => setActiveIndex(index)}
+                    className={`
+                      flex items-center gap-2 px-5 py-2.5 rounded-full text-sm font-medium transition-all duration-300 border
+                      ${activeIndex === index 
+                        ? 'bg-indigo-500 text-white border-indigo-400 shadow-[0_0_20px_rgba(99,102,241,0.5)] transform scale-105' 
+                        : 'bg-slate-800/50 text-slate-400 border-slate-700 hover:bg-slate-800 hover:text-slate-200'
+                      }
+                    `}
+                  >
+                    {getIconForCategory(rec.category)}
+                    {rec.category}
+                  </button>
+                ))}
               </div>
-            )}
-          </>
-        );
-      };
 
-      // --- COMPONENT: HistoryList ---
+              {/* Display Active Card */}
+              <div className="w-full relative">
+                {recommendations.map((rec, index) => (
+                   <div 
+                    key={index} 
+                    className={index === activeIndex ? 'block' : 'hidden'}
+                   >
+                     <SongCard data={rec} imageUrl={currentImage} />
+                   </div>
+                ))}
+              </div>
+              
+              <button 
+                onClick={handleReset}
+                className="mt-12 px-8 py-3 rounded-full bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-600 transition-all hover:scale-105"
+              >
+                Scan Another Vibe
+              </button>
+            </div>
+          )}
 
-      const HistoryList = ({ items, onSelect }) => {
-        if (items.length === 0) return null;
+        </main>
 
-        return (
-          <div className="w-full max-w-4xl mx-auto mt-16 px-4 pb-20">
-            <h3 className="text-lg font-semibold text-slate-400 mb-6 flex items-center gap-2">
-              <Clock className="w-5 h-5" />
-              Recent Vibes
+        {/* History Section */}
+        <HistoryList items={history} onSelect={handleHistorySelect} />
+
+      </div>
+
+      {/* Info Modal */}
+      {showInfo && (
+        <div 
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-[fadeIn_0.2s_ease-out]"
+          onClick={() => setShowInfo(false)}
+        >
+          <div 
+            className="bg-slate-900 border border-slate-700 p-6 md:p-8 rounded-3xl max-w-md w-full shadow-2xl relative animate-[scaleIn_0.3s_ease-out]" 
+            onClick={e => e.stopPropagation()}
+          >
+            <button 
+              onClick={() => setShowInfo(false)} 
+              className="absolute top-4 right-4 p-2 text-slate-500 hover:text-white hover:bg-slate-800 rounded-full transition-colors"
+            >
+              <X className="w-5 h-5" />
+            </button>
+            
+            <h3 className="text-xl font-display font-bold text-white mb-6 flex items-center gap-3">
+              <div className="p-2 bg-indigo-500/20 rounded-lg">
+                <Sparkles className="w-5 h-5 text-indigo-400" />
+              </div>
+              The Science of Vibe
             </h3>
             
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {items.map((item) => {
-                const previewRec = item.recommendations[0];
-                return (
-                  <div 
-                    key={item.id}
-                    onClick={() => onSelect(item)}
-                    className="group relative bg-slate-800/40 hover:bg-slate-800/80 border border-slate-700/50 hover:border-slate-600 rounded-xl p-3 flex items-center gap-4 cursor-pointer transition-all duration-200"
-                  >
-                    <div className="w-16 h-16 rounded-lg overflow-hidden flex-shrink-0 relative">
-                      <img 
-                        src={item.imageUrl} 
-                        alt="History thumbnail" 
-                        className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500"
-                      />
-                      <div className="absolute inset-0 bg-black/20 group-hover:bg-transparent transition-colors"></div>
-                      <div className="absolute bottom-0 right-0 bg-black/60 px-1 py-0.5 rounded-tl-md">
-                         <Layers className="w-3 h-3 text-white" />
-                      </div>
-                    </div>
-                    
-                    <div className="flex-1 min-w-0">
-                      <h4 className="font-medium text-slate-200 truncate group-hover:text-white transition-colors">
-                        {previewRec.songTitle}
-                      </h4>
-                      <p className="text-sm text-slate-400 truncate">
-                        {previewRec.artist}
-                      </p>
-                      <div className="flex items-center gap-2 mt-1">
-                         <div 
-                           className="w-2 h-2 rounded-full" 
-                           style={{ backgroundColor: previewRec.hexColor }}
-                         />
-                         <span className="text-xs text-slate-500">+2 more options</span>
-                      </div>
-                    </div>
-                    
-                    <ChevronRight className="w-5 h-5 text-slate-600 group-hover:text-slate-300 transition-colors" />
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        );
-      };
-
-      // --- MAIN APP COMPONENT ---
-
-      const VIBE_OPTIONS = [
-        "Surprise Me",
-        "Lo-Fi / Chill",
-        "Indie/Alt",
-        "Hip Hop/Rap",
-        "English Pop",
-        "Arabic",
-        "Iraqi",
-        "Khaleeji",
-        "K-Pop",
-        "Techno/House",
-        "Classical"
-      ];
-
-      const App = () => {
-        const [currentImage, setCurrentImage] = useState(null);
-        const [recommendations, setRecommendations] = useState([]);
-        const [activeIndex, setActiveIndex] = useState(0);
-        const [isLoading, setIsLoading] = useState(false);
-        const [error, setError] = useState(null);
-        const [history, setHistory] = useState([]);
-        const [musicPreference, setMusicPreference] = useState("Surprise Me");
-        
-        // API Key Management
-        const [showKeyModal, setShowKeyModal] = useState(false);
-        const [apiKey, setApiKey] = useState(() => {
-            // Check hardcoded first
-            const hardcoded = process.env.API_KEY;
-            if (hardcoded && hardcoded !== "YOUR_API_KEY_HERE") {
-                return hardcoded;
-            }
-            // Check localStorage
-            return localStorage.getItem("gemini_api_key") || "";
-        });
-
-        const handleSaveKey = (newKey) => {
-            setApiKey(newKey);
-            localStorage.setItem("gemini_api_key", newKey);
-            setShowKeyModal(false);
-            if (error && error.includes("API Key")) {
-                setError(null);
-            }
-        };
-
-        const handleImageSelected = async (base64, mimeType) => {
-          if (!apiKey || apiKey === "YOUR_API_KEY_HERE") {
-             setShowKeyModal(true);
-             return;
-          }
-
-          setCurrentImage(base64);
-          setRecommendations([]);
-          setError(null);
-          setIsLoading(true);
-          setActiveIndex(0);
-
-          try {
-            const results = await analyzeImageAndSuggestSong(base64, mimeType, musicPreference, apiKey);
-            
-            const newHistoryItem = {
-              id: Date.now().toString(),
-              imageUrl: base64,
-              recommendations: results,
-              timestamp: Date.now()
-            };
-
-            setRecommendations(results);
-            setHistory(prev => [newHistoryItem, ...prev].slice(0, 9));
-          } catch (err) {
-            console.error(err);
-            if (err.message === "API_KEY_MISSING") {
-               setShowKeyModal(true);
-            } else if (err.message.includes("403") || err.message.includes("key")) {
-               setError("Invalid API Key. Please check your settings.");
-               setShowKeyModal(true);
-            } else {
-               setError("We couldn't catch the vibe. The AI might be having a creative block or the image format isn't supported. Please try again.");
-            }
-          } finally {
-            setIsLoading(false);
-          }
-        };
-
-        const handleHistorySelect = (item) => {
-          setCurrentImage(item.imageUrl);
-          setRecommendations(item.recommendations);
-          setActiveIndex(0);
-          setError(null);
-          window.scrollTo({ top: 0, behavior: 'smooth' });
-        };
-
-        const handleReset = () => {
-          setCurrentImage(null);
-          setRecommendations([]);
-          setError(null);
-          setActiveIndex(0);
-        };
-
-        const getIconForCategory = (category) => {
-          if (category.toLowerCase().includes('trending') || category.toLowerCase().includes('main')) return <TrendingUp className="w-4 h-4" />;
-          if (category.toLowerCase().includes('aesthetic')) return <SparklesIcon className="w-4 h-4" />;
-          return <AlignLeft className="w-4 h-4" />;
-        };
-
-        return (
-          <div className="min-h-screen bg-[#0f172a] text-slate-200 selection:bg-indigo-500/30 selection:text-indigo-200 pb-20 overflow-x-hidden relative">
-            
-            <ApiKeyModal 
-              isOpen={showKeyModal} 
-              onClose={() => setShowKeyModal(false)} 
-              onSave={handleSaveKey}
-              currentKey={apiKey === "YOUR_API_KEY_HERE" ? "" : apiKey}
-            />
-
-            <div className="fixed top-0 left-0 w-full h-full overflow-hidden pointer-events-none z-0">
-              <div className="absolute top-0 left-1/4 w-[500px] h-[500px] bg-indigo-600/20 rounded-full blur-[120px] mix-blend-screen animate-[pulse_8s_ease-in-out_infinite]"></div>
-              <div className="absolute bottom-0 right-1/4 w-[500px] h-[500px] bg-purple-600/10 rounded-full blur-[120px] mix-blend-screen animate-[pulse_10s_ease-in-out_infinite_reverse]"></div>
-            </div>
-
-            <div className="relative z-10 max-w-6xl mx-auto px-4 md:px-6">
-              
-              <div className="absolute top-6 right-4 md:right-8 z-50">
-                <button 
-                  onClick={() => setShowKeyModal(true)}
-                  className="p-2 rounded-full bg-slate-800/50 hover:bg-slate-700 text-slate-400 hover:text-white transition-all backdrop-blur-md border border-slate-700/50"
-                  title="API Key Settings"
-                >
-                   <Settings className="w-5 h-5" />
-                </button>
-              </div>
-
-              <header className="py-8 md:py-12 flex flex-col items-center justify-center text-center">
-                <div className="inline-flex items-center gap-2 mb-4 px-3 py-1 rounded-full bg-slate-800/50 border border-slate-700 backdrop-blur-sm">
-                   <Sparkles className="w-4 h-4 text-amber-300" />
-                   <span className="text-xs font-medium text-slate-300">CREATED by DeeVoo</span>
-                </div>
-                
-                <h1 
-                  className="font-display text-5xl md:text-7xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-indigo-200 via-white to-purple-200 mb-4 cursor-pointer"
-                  onClick={handleReset}
-                >
-                  VibeTune
-                </h1>
-                <p className="text-lg text-slate-400 max-w-md mx-auto leading-relaxed">
-                  Upload a photo for your <span className="text-pink-400 font-medium">Your VibeTune</span>. We'll find 3 perfect tracks to match the aesthetic.
+            <div className="space-y-6 text-slate-300 leading-relaxed">
+                <p>
+                  VibeTune isn't just random. It uses <strong>Google's Gemini 2.5 Flash</strong>—a cutting-edge multimodal AI model—to experience your photo with "machine synesthesia."
                 </p>
-              </header>
 
-              <main className="flex flex-col items-center min-h-[400px]">
-                
-                {recommendations.length === 0 && !isLoading && (
-                  <div className="w-full animate-[fadeIn_0.5s_ease-out]">
-                    
-                    <div className="max-w-xl mx-auto mb-6">
-                       <div className="flex items-center gap-2 mb-3 text-slate-400 text-sm font-medium px-2">
-                          <Music className="w-4 h-4" />
-                          <span>Choose your vibe</span>
-                       </div>
-                       <div className="flex flex-wrap gap-2 justify-center md:justify-start">
-                         {VIBE_OPTIONS.map((vibe) => (
-                           <button
-                             key={vibe}
-                             onClick={() => setMusicPreference(vibe)}
-                             className={`
-                               px-4 py-2 rounded-full text-sm font-medium transition-all duration-200 border
-                               ${musicPreference === vibe 
-                                 ? 'bg-indigo-600 text-white border-indigo-500 shadow-lg shadow-indigo-500/25 scale-105' 
-                                 : 'bg-slate-800/40 text-slate-400 border-slate-700/50 hover:bg-slate-800 hover:border-slate-600 hover:text-slate-200'
-                               }
-                             `}
-                           >
-                             {vibe}
-                           </button>
-                         ))}
-                       </div>
-                    </div>
-
-                     <ImageUploader onImageSelected={handleImageSelected} isLoading={isLoading} />
-                  </div>
-                )}
-
-                {isLoading && (
-                   <div className="w-full max-w-xl mx-auto flex flex-col items-center justify-center min-h-[300px]">
-                      <div className="relative">
-                         <div className="absolute inset-0 bg-indigo-500/20 blur-xl rounded-full animate-pulse"></div>
-                         <img 
-                            src={currentImage || ''} 
-                            alt="Analyzing" 
-                            className="w-32 h-32 rounded-full object-cover relative z-10 border-4 border-indigo-500/30 animate-[spin_3s_linear_infinite]"
-                         />
-                      </div>
-                      <h3 className="mt-8 text-2xl font-display font-bold text-white">Curating Vibes...</h3>
-                      <p className="mt-2 text-slate-400">Selecting {musicPreference !== "Surprise Me" ? musicPreference : "perfect"} tracks for your story</p>
-                   </div>
-                )}
-
-                {error && (
-                  <div className="w-full max-w-md bg-red-500/10 border border-red-500/20 rounded-xl p-6 text-center mt-8 animate-[fadeIn_0.3s_ease-out]">
-                     <div className="w-12 h-12 bg-red-500/20 rounded-full flex items-center justify-center mx-auto mb-4 text-red-400">
-                       <AlertCircle className="w-6 h-6" />
-                     </div>
-                     <p className="text-red-200 mb-4">{error}</p>
-                     
-                     <div className="flex gap-3 justify-center">
-                        <button 
-                          onClick={handleReset}
-                          className="px-6 py-2 bg-red-600/20 hover:bg-red-600/30 text-red-200 rounded-lg transition-colors text-sm font-medium"
-                        >
-                          Try Again
-                        </button>
-                        
-                        {error.includes("Key") && (
-                            <button 
-                            onClick={() => setShowKeyModal(true)}
-                            className="px-6 py-2 bg-indigo-600/20 hover:bg-indigo-600/30 text-indigo-200 rounded-lg transition-colors text-sm font-medium"
-                          >
-                            Update Key
-                          </button>
-                        )}
-                     </div>
-                  </div>
-                )}
-
-                {recommendations.length > 0 && currentImage && !isLoading && (
-                  <div className="w-full flex flex-col items-center">
-                    
-                    <div className="w-full max-w-4xl mx-auto mb-6 flex flex-wrap justify-center gap-3">
-                      {recommendations.map((rec, index) => (
-                        <button
-                          key={index}
-                          onClick={() => setActiveIndex(index)}
-                          className={`
-                            flex items-center gap-2 px-5 py-2.5 rounded-full text-sm font-medium transition-all duration-300 border
-                            ${activeIndex === index 
-                              ? 'bg-indigo-500 text-white border-indigo-400 shadow-[0_0_20px_rgba(99,102,241,0.5)] transform scale-105' 
-                              : 'bg-slate-800/50 text-slate-400 border-slate-700 hover:bg-slate-800 hover:text-slate-200'
-                            }
-                          `}
-                        >
-                          {getIconForCategory(rec.category)}
-                          {rec.category}
-                        </button>
-                      ))}
-                    </div>
-
-                    <div className="w-full relative">
-                      {recommendations.map((rec, index) => (
-                         <div 
-                          key={index} 
-                          className={index === activeIndex ? 'block' : 'hidden'}
-                         >
-                           <SongCard data={rec} imageUrl={currentImage} />
-                         </div>
-                      ))}
+                <div className="space-y-4">
+                  <p className="text-sm font-semibold text-slate-400 uppercase tracking-wider">How it decodes the mood:</p>
+                  
+                  <div className="grid gap-3">
+                    <div className="bg-slate-800/40 p-3 rounded-lg border border-slate-700/50">
+                        <h4 className="text-white font-medium text-sm mb-1 flex items-center gap-2">
+                            <div className="w-2 h-2 rounded-full bg-indigo-400"></div>
+                            Visual Semantics
+                        </h4>
+                        <p className="text-xs text-slate-400">It identifies objects, scenery (beach vs. bedroom), and cultural markers in the frame.</p>
                     </div>
                     
-                    <button 
-                      onClick={handleReset}
-                      className="mt-12 px-8 py-3 rounded-full bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-600 transition-all hover:scale-105"
-                    >
-                      Scan Another Vibe
-                    </button>
+                    <div className="bg-slate-800/40 p-3 rounded-lg border border-slate-700/50">
+                         <h4 className="text-white font-medium text-sm mb-1 flex items-center gap-2">
+                            <div className="w-2 h-2 rounded-full bg-pink-400"></div>
+                            Atmospheric Extraction
+                        </h4>
+                        <p className="text-xs text-slate-400">It analyzes lighting temperature, color saturation, and shadow depth to determine emotional weight.</p>
+                    </div>
+
+                     <div className="bg-slate-800/40 p-3 rounded-lg border border-slate-700/50">
+                         <h4 className="text-white font-medium text-sm mb-1 flex items-center gap-2">
+                            <div className="w-2 h-2 rounded-full bg-emerald-400"></div>
+                            Sonic Mapping
+                        </h4>
+                        <p className="text-xs text-slate-400">Finally, it cross-references this data with vast musical knowledge to match genre, tempo, and lyrical themes to your visual moment.</p>
+                    </div>
                   </div>
-                )}
-
-              </main>
-
-              <HistoryList items={history} onSelect={handleHistorySelect} />
-
+                </div>
             </div>
           </div>
-        );
-      };
+        </div>
+      )}
+    </div>
+  );
+};
 
-      // --- MOUNT ---
-      const rootElement = document.getElementById('root');
-      if (rootElement) {
-        const root = createRoot(rootElement);
-        root.render(<App />);
-      }
-    </script>
-  </body>
-</html>
-
+export default App;
