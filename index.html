@@ -103,7 +103,7 @@
         Check, Smartphone, X, AudioWaveform, Eye, EyeOff, Volume2, 
         VolumeX, Youtube, Pause, Share2, Clock, ChevronRight, Layers,
         Sparkles, Zap, TrendingUp, AlignLeft, Music, Sparkles as SparklesIcon,
-        Settings, Key, AlertCircle
+        Settings, Key, AlertCircle, Download, Timer, Film
       } from "lucide-react";
 
       // --- SERVICE: Gemini ---
@@ -344,6 +344,10 @@
         // Preview State
         const [showPreview, setShowPreview] = useState(false);
         const [stickerVisible, setStickerVisible] = useState(true);
+        const [playbackDuration, setPlaybackDuration] = useState(15); // 15 or 30 seconds
+        const [isGeneratingStory, setIsGeneratingStory] = useState(false);
+        const [isGeneratingVideo, setIsGeneratingVideo] = useState(false);
+        const [videoProgress, setVideoProgress] = useState(0);
         
         // Dragging State
         const [stickerPos, setStickerPos] = useState({ x: 50, y: 50 }); // Percentages
@@ -387,6 +391,215 @@
           }
         };
 
+        // Reusable function to draw story to a canvas context
+        const drawStoryToCanvas = async (ctx, width, height) => {
+            // 1. Draw Background Image
+            const img = new Image();
+            img.crossOrigin = "anonymous";
+            img.src = imageUrl;
+            await new Promise(resolve => img.onload = resolve);
+            
+            // Calculate cover aspect ratio to fill canvas
+            const imgRatio = img.width / img.height;
+            const canvasRatio = width / height;
+            let renderW, renderH, offsetX, offsetY;
+            
+            if (imgRatio > canvasRatio) {
+               renderH = height;
+               renderW = height * imgRatio;
+               offsetX = -(renderW - width) / 2;
+               offsetY = 0;
+            } else {
+               renderW = width;
+               renderH = width / imgRatio;
+               offsetX = 0;
+               offsetY = -(renderH - height) / 2;
+            }
+            
+            ctx.drawImage(img, offsetX, offsetY, renderW, renderH);
+            
+            // 2. Draw Sticker (if visible)
+            if (stickerVisible) {
+               // Sticker Config (Scaled to 1080p width)
+               const stickerW = 600;
+               const stickerH = 160;
+               const stickerX = (stickerPos.x / 100) * width - (stickerW / 2);
+               const stickerY = (stickerPos.y / 100) * height - (stickerH / 2);
+               
+               // Draw Sticker Background (Rounded Rect)
+               ctx.save();
+               ctx.fillStyle = 'rgba(255, 255, 255, 0.25)';
+               ctx.shadowColor = 'rgba(0, 0, 0, 0.2)';
+               ctx.shadowBlur = 20;
+               ctx.beginPath();
+               ctx.roundRect(stickerX, stickerY, stickerW, stickerH, 25);
+               ctx.fill();
+               ctx.restore();
+               
+               // Draw Album Art (Left side)
+               const artSize = 130;
+               const artPad = 15;
+               const artX = stickerX + artPad;
+               const artY = stickerY + artPad;
+               
+               ctx.save();
+               ctx.beginPath();
+               ctx.roundRect(artX, artY, artSize, artSize, 15);
+               ctx.clip();
+               // Draw a zoomed version of the main image as "album art"
+               ctx.drawImage(img, artX - 20, artY - 20, artSize + 40, artSize + 40);
+               ctx.restore();
+               
+               // Draw Text
+               const textX = artX + artSize + 25;
+               
+               // Song Title
+               ctx.fillStyle = 'white';
+               ctx.font = 'bold 42px Inter, sans-serif';
+               ctx.shadowColor = 'rgba(0,0,0,0.5)';
+               ctx.shadowBlur = 4;
+               ctx.fillText(data.songTitle, textX, stickerY + 65, stickerW - artSize - 50);
+               
+               // Artist
+               ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
+               ctx.font = '32px Inter, sans-serif';
+               ctx.fillText(data.artist, textX, stickerY + 115, stickerW - artSize - 50);
+            }
+        };
+
+        const handleDownloadStory = async () => {
+          setIsGeneratingStory(true);
+          try {
+            const canvas = document.createElement('canvas');
+            const WIDTH = 1080;
+            const HEIGHT = 1920;
+            canvas.width = WIDTH;
+            canvas.height = HEIGHT;
+            const ctx = canvas.getContext('2d');
+            
+            await drawStoryToCanvas(ctx, WIDTH, HEIGHT);
+            
+            canvas.toBlob((blob) => {
+               const url = URL.createObjectURL(blob);
+               const a = document.createElement('a');
+               a.href = url;
+               a.download = `vibetune-story-${Date.now()}.png`;
+               document.body.appendChild(a);
+               a.click();
+               document.body.removeChild(a);
+               URL.revokeObjectURL(url);
+               setIsGeneratingStory(false);
+            }, 'image/png');
+            
+          } catch (err) {
+            console.error("Story Gen Error:", err);
+            setIsGeneratingStory(false);
+            alert("Could not generate story image. Please try again.");
+          }
+        };
+
+        const handleDownloadVideo = async () => {
+          if (!audioUrl) return;
+          setIsGeneratingVideo(true);
+          setVideoProgress(0);
+
+          try {
+            // 1. Setup Canvas
+            const canvas = document.createElement('canvas');
+            const WIDTH = 1080;
+            const HEIGHT = 1920;
+            canvas.width = WIDTH;
+            canvas.height = HEIGHT;
+            const ctx = canvas.getContext('2d');
+            
+            // Draw initial frame (it's static)
+            await drawStoryToCanvas(ctx, WIDTH, HEIGHT);
+
+            // 2. Setup Audio
+            const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            const dest = audioCtx.createMediaStreamDestination();
+            
+            const response = await fetch(audioUrl);
+            const arrayBuffer = await response.arrayBuffer();
+            const audioBuffer = await audioCtx.decodeAudioData(arrayBuffer);
+            
+            const source = audioCtx.createBufferSource();
+            source.buffer = audioBuffer;
+            source.connect(dest);
+            
+            // 3. Create Recorder
+            const canvasStream = canvas.captureStream(30); // 30 FPS
+            const audioStream = dest.stream;
+            const combinedStream = new MediaStream([
+               ...canvasStream.getVideoTracks(),
+               ...audioStream.getAudioTracks()
+            ]);
+
+            // Try to use mp4 (better for iOS), fallback to webm
+            let mimeType = 'video/webm;codecs=vp9';
+            if (MediaRecorder.isTypeSupported('video/mp4;codecs=h264')) {
+               mimeType = 'video/mp4;codecs=h264';
+            } else if (MediaRecorder.isTypeSupported('video/webm')) {
+               mimeType = 'video/webm';
+            }
+
+            const recorder = new MediaRecorder(combinedStream, {
+               mimeType: mimeType,
+               videoBitsPerSecond: 8000000 // 8 Mbps high quality
+            });
+
+            const chunks = [];
+            recorder.ondataavailable = (e) => chunks.push(e.data);
+            
+            recorder.onstop = () => {
+               const blob = new Blob(chunks, { type: mimeType });
+               const url = URL.createObjectURL(blob);
+               const a = document.createElement('a');
+               a.href = url;
+               a.download = `vibetune-story-${Date.now()}.${mimeType.includes('mp4') ? 'mp4' : 'webm'}`;
+               document.body.appendChild(a);
+               a.click();
+               document.body.removeChild(a);
+               URL.revokeObjectURL(url);
+               
+               setIsGeneratingVideo(false);
+               audioCtx.close();
+            };
+
+            // 4. Start Recording Loop
+            recorder.start();
+            source.start(0);
+
+            // Important: We need to keep the canvas stream "active" even if static
+            // Some browsers pause streams if no paint happens
+            let startTime = Date.now();
+            const durationMs = playbackDuration * 1000;
+            
+            const animate = () => {
+               const elapsed = Date.now() - startTime;
+               const progress = Math.min(100, (elapsed / durationMs) * 100);
+               setVideoProgress(Math.round(progress));
+
+               // Simple redraw to keep stream alive
+               ctx.fillStyle = 'rgba(0,0,0,0.01)';
+               ctx.fillRect(0, 0, 1, 1); 
+
+               if (elapsed < durationMs) {
+                  requestAnimationFrame(animate);
+               } else {
+                  recorder.stop();
+                  source.stop();
+               }
+            };
+            animate();
+
+          } catch (err) {
+            console.error("Video Gen Error:", err);
+            setIsGeneratingVideo(false);
+            alert("Could not generate video. Browser might not support this feature.");
+          }
+        };
+
         useEffect(() => {
           setIsPlaying(false);
           setAudioUrl(null);
@@ -424,6 +637,16 @@
           fetchAudio();
         }, [data.songTitle, data.artist]);
 
+        const handleTimeUpdate = () => {
+          if (audioRef.current && isPlaying) {
+             if (audioRef.current.currentTime >= playbackDuration) {
+                audioRef.current.pause();
+                setIsPlaying(false);
+                audioRef.current.currentTime = 0;
+             }
+          }
+        };
+
         const togglePlayback = (e) => {
           e?.stopPropagation();
           if (audioRef.current && audioUrl) {
@@ -431,6 +654,7 @@
               audioRef.current.pause();
               setIsPlaying(false);
             } else {
+              audioRef.current.currentTime = 0;
               audioRef.current.volume = 0.5;
               audioRef.current.play()
                 .then(() => setIsPlaying(true))
@@ -470,7 +694,7 @@
             <audio 
               ref={audioRef} 
               src={audioUrl || ''} 
-              loop 
+              onTimeUpdate={handleTimeUpdate}
               onEnded={() => setIsPlaying(false)}
               crossOrigin="anonymous"
             />
@@ -650,6 +874,17 @@
                    </div>
 
                    <div className="absolute top-12 right-4 z-40 flex flex-col gap-4 pointer-events-auto">
+                     
+                     {/* Playback Control */}
+                     <button 
+                        onClick={() => setPlaybackDuration(prev => prev === 15 ? 30 : 15)}
+                        className="w-10 h-10 rounded-full bg-black/40 backdrop-blur-md flex flex-col items-center justify-center text-white hover:bg-black/60 transition-colors"
+                        title="Toggle Duration"
+                     >
+                        <span className="text-[10px] font-bold">{playbackDuration}s</span>
+                        <Timer className="w-3 h-3" />
+                     </button>
+
                      <button 
                         onClick={togglePlayback}
                         disabled={!audioUrl && !isLoadingAudio}
@@ -670,11 +905,39 @@
                      >
                         {stickerVisible ? <Eye className="w-5 h-5" /> : <EyeOff className="w-5 h-5 text-white/70" />}
                      </button>
+
+                     {/* Image Download */}
+                     <button 
+                        onClick={(e) => { e.stopPropagation(); handleDownloadStory(); }}
+                        disabled={isGeneratingStory || isGeneratingVideo}
+                        className="w-10 h-10 rounded-full bg-white/10 backdrop-blur-md flex items-center justify-center text-white hover:bg-white/20 transition-colors"
+                        title="Save as Image"
+                     >
+                        {isGeneratingStory ? <Loader2 className="w-5 h-5 animate-spin" /> : <Download className="w-5 h-5" />}
+                     </button>
+
+                     {/* Video Download */}
+                     <button 
+                        onClick={(e) => { e.stopPropagation(); handleDownloadVideo(); }}
+                        disabled={isGeneratingVideo || !audioUrl}
+                        className="w-10 h-10 rounded-full bg-indigo-500/80 backdrop-blur-md flex items-center justify-center text-white hover:bg-indigo-500 transition-colors relative"
+                        title="Save as Video"
+                     >
+                        {isGeneratingVideo ? (
+                          <div className="flex items-center justify-center">
+                            <span className="text-[8px] font-bold absolute">{videoProgress}%</span>
+                            <Loader2 className="w-8 h-8 animate-spin opacity-50" />
+                          </div>
+                        ) : (
+                          <Film className="w-5 h-5" />
+                        )}
+                     </button>
+
                    </div>
 
                    <img src={imageUrl} alt="Preview" className="w-full h-full object-cover pointer-events-none" />
 
-                   {!isPlaying && !isLoadingAudio && (
+                   {!isPlaying && !isLoadingAudio && !isGeneratingVideo && (
                       <div 
                         className="absolute inset-0 z-10 flex items-center justify-center pointer-events-none"
                       >
@@ -693,6 +956,17 @@
                       </div>
                    )}
                    
+                   {isGeneratingVideo && (
+                     <div className="absolute inset-0 z-50 bg-black/80 flex flex-col items-center justify-center p-6 text-center backdrop-blur-sm">
+                       <Loader2 className="w-10 h-10 text-indigo-500 animate-spin mb-4" />
+                       <h3 className="text-white font-bold text-lg mb-2">Rendering Video...</h3>
+                       <p className="text-slate-400 text-sm">Please wait while we record the audio and visual. This takes about {playbackDuration} seconds.</p>
+                       <div className="w-full max-w-[200px] h-2 bg-slate-800 rounded-full mt-4 overflow-hidden">
+                          <div className="h-full bg-indigo-500 transition-all duration-300" style={{ width: `${videoProgress}%` }}></div>
+                       </div>
+                     </div>
+                   )}
+
                    {stickerVisible && (
                      <div 
                        className={`absolute cursor-move touch-none select-none
@@ -943,7 +1217,7 @@
               <header className="py-8 md:py-12 flex flex-col items-center justify-center text-center">
                 <div className="inline-flex items-center gap-2 mb-4 px-3 py-1 rounded-full bg-slate-800/50 border border-slate-700 backdrop-blur-sm">
                    <Sparkles className="w-4 h-4 text-amber-300" />
-                   <span className="text-xs font-medium text-slate-300"></span>
+                   <span className="text-xs font-medium text-slate-300">CREATED by DeeVoo</span>
                 </div>
                 
                 <h1 
@@ -953,7 +1227,7 @@
                   VibeTune
                 </h1>
                 <p className="text-lg text-slate-400 max-w-md mx-auto leading-relaxed">
-                  Upload a photo for your <span className="text-pink-400 font-medium">Insta Story</span>. We'll find 3 perfect tracks to match the aesthetic.
+                  Upload a photo for your <span className="text-pink-400 font-medium">Your VibeTune</span>. We'll find 3 perfect tracks to match the aesthetic.
                 </p>
               </header>
 
