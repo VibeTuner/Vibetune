@@ -7,23 +7,27 @@ permissions:
   pages: write
   id-token: write
 
+
 jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4 # Updated to v4
+      - uses: actions/checkout@v4 
       
       - name: Install Node
-        uses: actions/setup-node@v4 # Updated to v4
+        uses: actions/setup-node@v4
         with:
-          node-version: 20 # Using a current LTS version
+          node-version: 20
 
       - name: Install dependencies
+        # Assuming files are in the root, we set working-directory to force context
         run: npm install
-
+        working-directory: ./  
+        
       - name: Build project
         run: npm run build
-
+        working-directory: ./
+        
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3 # Updated to v3 (or later)
         with:
