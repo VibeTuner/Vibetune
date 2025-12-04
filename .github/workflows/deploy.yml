@@ -21,18 +21,17 @@ jobs:
 
       - name: Install dependencies
         run: npm install
-        # CRITICAL FIX: Use the actual subfolder name where package.json lives
-        working-directory: my-vite-project007 
+        # REMOVED: working-directory: my-vite-project007 (Files are in the root)
 
       - name: Build project
         run: npm run build
-        working-directory: my-vite-project007
+        # REMOVED: working-directory: my-vite-project007 (Files are in the root)
 
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          # Path to the dist folder inside the actual subfolder
-          path: my-vite-project007/dist
+          # CORRECTED: Path is now simply 'dist' because the project is in the repository root.
+          path: dist
           
   deploy:
     runs-on: ubuntu-latest
