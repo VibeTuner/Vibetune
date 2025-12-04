@@ -1,0 +1,5 @@
+{
+  "name": "VibeTune",
+  "description": "An AI-powered application that analyzes the visual mood of your uploaded photos and recommends the perfect song to match the vibe.",
+  "requestFramePermissions": []
+}
