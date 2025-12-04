@@ -7,14 +7,17 @@ permissions:
   pages: write
   id-token: write
 
-
-
-
 jobs:
   build:
     runs-on: ubuntu-latest
+    
+    # CRITICAL FIX: Set the working directory for ALL subsequent steps in this job
+    defaults:
+      run:
+        working-directory: Vibetune
+        
     steps:
-      - uses: actions/checkout@v4 
+      - uses: actions/checkout@v4
       
       - name: Install Node
         uses: actions/setup-node@v4
@@ -22,18 +25,17 @@ jobs:
           node-version: 20
 
       - name: Install dependencies
-        run: npm install
-        working-directory: Vibetune  # <-- CORRECTED: Just the subfolder name
-        
+        run: npm install  # Runs inside the 'Vibetune' subfolder now
+
       - name: Build project
-        run: npm run build
-        working-directory: Vibetune  # <-- CORRECTED: Just the subfolder name
+        run: npm run build  # Runs inside the 'Vibetune' subfolder now
 
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          path: Vibetune/dist  # <-- CORRECTED: Path relative to repository root
-
+          # The path is 'dist' relative to the working directory (Vibetune),
+          # but the action handles the path correctly from the root.
+          path: dist
 
   deploy:
     runs-on: ubuntu-latest
@@ -44,4 +46,4 @@ jobs:
     steps:
       - name: Deploy to GitHub Pages
         id: deployment
-        uses: actions/deploy-pages@v4 # Updated to v4 (or later)
+        uses: actions/deploy-pages@v4
