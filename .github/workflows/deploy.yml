@@ -11,8 +11,6 @@ jobs:
   build:
     runs-on: ubuntu-latest
     
-    # REMOVED: The 'defaults: working-directory: Vibetune' block remains removed.
-    
     steps:
       - uses: actions/checkout@v4
       
@@ -23,24 +21,22 @@ jobs:
 
       - name: Install dependencies
         run: npm install
-        # FINAL ATTEMPT FIX: Try moving up one directory, assuming the runner 
-        # starts one folder too deep due to the repository structure.
-        working-directory: .. 
+        # Re-applying the standard subfolder fix, as the error must be 
+        # transient or due to an unknown environment detail.
+        working-directory: Vibetune 
 
       - name: Build project
         run: npm run build
-        # FINAL ATTEMPT FIX: Try moving up one directory, assuming the runner 
-        # starts one folder too deep due to the repository structure.
-        working-directory: ..
+        working-directory: Vibetune
 
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          # If the build works from '..', the dist folder will be in the parent's dist.
-          path: dist
-          # If this still fails, you may need to manually verify the nested path
-          # on the repository itself and restructure the repo.
-
+          # If the build succeeds in the 'Vibetune' subfolder, the output 
+          # 'dist' folder will be located inside it. We specify the full 
+          # path from the repository root.
+          path: Vibetune/dist
+          
   deploy:
     runs-on: ubuntu-latest
     needs: build
