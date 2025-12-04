@@ -8,6 +8,7 @@ permissions:
   id-token: write
 
 
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -20,18 +21,19 @@ jobs:
           node-version: 20
 
       - name: Install dependencies
-        # Assuming files are in the root, we set working-directory to force context
         run: npm install
-        working-directory: ./  
+        working-directory: ./Vibetune  # <--- CRITICAL FIX: Directs to the subfolder
         
       - name: Build project
         run: npm run build
-        working-directory: ./
-        
+        working-directory: ./Vibetune  # <--- CRITICAL FIX: Directs to the subfolder
+
       - name: Upload artifact
-        uses: actions/upload-pages-artifact@v3 # Updated to v3 (or later)
+        # The path here should also be adjusted based on the working directory
+        uses: actions/upload-pages-artifact@v3
         with:
-          path: dist
+          path: Vibetune/dist  # <--- Adjust path to be relative from repository root (or just 'dist')
+
 
   deploy:
     runs-on: ubuntu-latest
