@@ -23,19 +23,23 @@ jobs:
 
       - name: Install dependencies
         run: npm install
-        # CRITICAL FIX: Explicitly set the working directory to the subfolder.
-        working-directory: Vibetune 
+        # FINAL ATTEMPT FIX: Try moving up one directory, assuming the runner 
+        # starts one folder too deep due to the repository structure.
+        working-directory: .. 
 
       - name: Build project
         run: npm run build
-        # CRITICAL FIX: Explicitly set the working directory to the subfolder.
-        working-directory: Vibetune
+        # FINAL ATTEMPT FIX: Try moving up one directory, assuming the runner 
+        # starts one folder too deep due to the repository structure.
+        working-directory: ..
 
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          # Path is relative to the repository root.
-          path: Vibetune/dist
+          # If the build works from '..', the dist folder will be in the parent's dist.
+          path: dist
+          # If this still fails, you may need to manually verify the nested path
+          # on the repository itself and restructure the repo.
 
   deploy:
     runs-on: ubuntu-latest
