@@ -21,19 +21,17 @@ jobs:
 
       - name: Install dependencies
         run: npm install
-        # REVERTED FIX: We must assume the files are nested in this folder 
-        # due to the persistent ENOENT error in the root.
-        working-directory: my-vite-project007 
+        # ASSUMPTION: Files are now at the repository root.
 
       - name: Build project
         run: npm run build
-        working-directory: my-vite-project007
+        # ASSUMPTION: Files are now at the repository root.
 
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          # Path to the dist folder inside the actual subfolder
-          path: my-vite-project007/dist
+          # Path is simply 'dist' for a root-level project.
+          path: dist
           
   deploy:
     runs-on: ubuntu-latest
