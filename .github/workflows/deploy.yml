@@ -21,21 +21,18 @@ jobs:
 
       - name: Install dependencies
         run: npm install
-        # Re-applying the standard subfolder fix, as the error must be 
-        # transient or due to an unknown environment detail.
-        working-directory: Vibetune 
+        # CRITICAL FIX: Use the actual subfolder name where package.json lives
+        working-directory: my-vite-project007 
 
       - name: Build project
         run: npm run build
-        working-directory: Vibetune
+        working-directory: my-vite-project007
 
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          # If the build succeeds in the 'Vibetune' subfolder, the output 
-          # 'dist' folder will be located inside it. We specify the full 
-          # path from the repository root.
-          path: Vibetune/dist
+          # Path to the dist folder inside the actual subfolder
+          path: my-vite-project007/dist
           
   deploy:
     runs-on: ubuntu-latest
