@@ -51,3 +51,21 @@ pwd
 git init
 git remote add origin https://github.com/VibeTuner/Vibetune.git
 git add vite.config.ts
+git add .
+git commit -m "Triggering redeploy"
+git config --global user.email "zzabb1x.not1ficat1on@gmail.com"
+git config --global user.name "Your Actual Name"
+git config --global user.name Vibetune
+git commit -m "Triggering redeploy"
+git push
+git push --set-upstream origin master
+git config --global http.postBuffer 524288000
+git push --set-upstream origin master
+touch .gitignore
+nano .gitignore
+# Remove the large file's directory from Git's index
+git rm -r --cached .cache
+git add .gitignore
+git commit -m "Configure gitignore and remove large cache file"
+git push --set-upstream origin master
+git reset $(git commit-tree HEAD^{tree} -m "Initial commit of Vibetune project")
