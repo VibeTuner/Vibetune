@@ -21,17 +21,19 @@ jobs:
 
       - name: Install dependencies
         run: npm install
-        # REMOVED: working-directory: my-vite-project007 (Files are in the root)
+        # REVERTED FIX: We must assume the files are nested in this folder 
+        # due to the persistent ENOENT error in the root.
+        working-directory: my-vite-project007 
 
       - name: Build project
         run: npm run build
-        # REMOVED: working-directory: my-vite-project007 (Files are in the root)
+        working-directory: my-vite-project007
 
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          # CORRECTED: Path is now simply 'dist' because the project is in the repository root.
-          path: dist
+          # Path to the dist folder inside the actual subfolder
+          path: my-vite-project007/dist
           
   deploy:
     runs-on: ubuntu-latest
