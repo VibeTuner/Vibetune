@@ -11,9 +11,7 @@ jobs:
   build:
     runs-on: ubuntu-latest
     
-    # REMOVED: The 'defaults: working-directory: Vibetune' block.
-    # We are now assuming the project files (package.json) are in the 
-    # root of the repository to fix the triple-folder path error.
+    # REMOVED: The 'defaults: working-directory: Vibetune' block remains removed.
     
     steps:
       - uses: actions/checkout@v4
@@ -24,16 +22,20 @@ jobs:
           node-version: 20
 
       - name: Install dependencies
-        run: npm install  # Runs in the repository root
+        run: npm install
+        # CRITICAL FIX: Explicitly set the working directory to the subfolder.
+        working-directory: Vibetune 
 
       - name: Build project
-        run: npm run build  # Runs in the repository root
+        run: npm run build
+        # CRITICAL FIX: Explicitly set the working directory to the subfolder.
+        working-directory: Vibetune
 
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          # Path is relative to the repository root, which is standard.
-          path: dist
+          # Path is relative to the repository root.
+          path: Vibetune/dist
 
   deploy:
     runs-on: ubuntu-latest
